@@ -1,0 +1,141 @@
+# NOTE: this definition file depends on features only available in
+# Singularity 3.2 and later.
+BootStrap: docker
+From: ubuntu:20.04
+Stage: build
+%post
+    . /.singularity.d/env/10-docker*.sh
+
+%post
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bison \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        flex \
+        git \
+        gnuplot \
+        gpg-agent \
+        libboost-system-dev \
+        libboost-thread-dev \
+        libcgal-dev \
+        libfl-dev \
+        libgmp-dev \
+        libmpfr-dev \
+        libncurses5-dev \
+        libqt5x11extras5-dev \
+        libreadline-dev \
+        libxt-dev \
+        python \
+        python-dev \
+        qtbase5-dev \
+        qttools5-dev \
+        software-properties-common \
+        time \
+        wget \
+        zlib1g-dev
+    rm -rf /var/lib/apt/lists/*
+
+# Mellanox OFED version 4.9-2.2.4.0
+%post
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        gnupg \
+        wget
+    rm -rf /var/lib/apt/lists/*
+%post
+    wget -qO - https://www.mellanox.com/downloads/ofed/RPM-GPG-KEY-Mellanox | apt-key add -
+    mkdir -p /etc/apt/sources.list.d && wget -q -nc --no-check-certificate -P /etc/apt/sources.list.d https://linux.mellanox.com/public/repo/mlnx_ofed/4.9-2.2.4.0/ubuntu18.04/mellanox_mlnx_ofed.list
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ibverbs-utils \
+        libibmad \
+        libibmad-devel \
+        libibumad \
+        libibumad-devel \
+        libibverbs-dev \
+        libibverbs1 \
+        libmlx4-1 \
+        libmlx4-dev \
+        libmlx5-1 \
+        libmlx5-dev \
+        librdmacm-dev \
+        librdmacm1
+    rm -rf /var/lib/apt/lists/*
+
+# SLURM PMI2 version 20.02.5
+%post
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bzip2 \
+        file \
+        make \
+        perl \
+        tar \
+        wget
+    rm -rf /var/lib/apt/lists/*
+%post
+    cd /
+    mkdir -p /var/tmp && wget -q -nc --no-check-certificate -P /var/tmp https://download.schedmd.com/slurm/slurm-20.02.5.tar.bz2
+    mkdir -p /var/tmp && tar -x -f /var/tmp/slurm-20.02.5.tar.bz2 -C /var/tmp -j
+    cd /var/tmp/slurm-20.02.5 &&   ./configure --prefix=/usr/local/slurm-pmi2
+    cd /var/tmp/slurm-20.02.5
+    make -C contribs/pmi2 install
+    rm -rf /var/tmp/slurm-20.02.5 /var/tmp/slurm-20.02.5.tar.bz2
+
+# OpenMPI version 2.1.1
+%post
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bzip2 \
+        file \
+        hwloc \
+        libnuma-dev \
+        make \
+        openssh-client \
+        perl \
+        tar \
+        wget
+    rm -rf /var/lib/apt/lists/*
+%post
+    cd /
+    mkdir -p /var/tmp && wget -q -nc --no-check-certificate -P /var/tmp https://www.open-mpi.org/software/ompi/v2.1/downloads/openmpi-2.1.1.tar.bz2
+    mkdir -p /var/tmp && tar -x -f /var/tmp/openmpi-2.1.1.tar.bz2 -C /var/tmp -j
+    cd /var/tmp/openmpi-2.1.1 &&   ./configure --prefix=/usr/local/openmpi --disable-getpwuid --enable-orterun-prefix-by-default --with-pmi=/usr/local/slurm-pmi2 --with-verbs --without-cuda
+    make -j$(nproc)
+    make -j$(nproc) install
+    rm -rf /var/tmp/openmpi-2.1.1 /var/tmp/openmpi-2.1.1.tar.bz2
+%environment
+    export LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH
+    export PATH=/usr/local/openmpi/bin:$PATH
+%post
+    export LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH
+    export PATH=/usr/local/openmpi/bin:$PATH
+
+%post
+    cd /
+    mkdir -p /opt/OpenFOAM
+    cd /opt/OpenFOAM
+    mkdir -p /opt/OpenFOAM && cd /opt/OpenFOAM && git clone --depth=1 --branch master https://github.com/OpenFOAM/OpenFOAM-8.git OpenFOAM-8 && cd -
+    mkdir -p /opt/OpenFOAM && cd /opt/OpenFOAM && git clone --depth=1 --branch master https://github.com/OpenFOAM/ThirdParty-8.git ThirdParty-8 && cd -
+    sed -i '45,46s/^/# /g' /opt/OpenFOAM/OpenFOAM-8/etc/bashrc
+    sed -i 's@^export FOAM_INST_DIR=$HOME/$WM_PROJECT@# export FOAM_INST_DIR=$HOME/$WM_PROJECT@' /opt/OpenFOAM/OpenFOAM-8/etc/bashrc
+    sed -i 's@^# export FOAM_INST_DIR=/opt/$WM_PROJECT@export FOAM_INST_DIR=/opt/$WM_PROJECT@' /opt/OpenFOAM/OpenFOAM-8/etc/bashrc
+    sed -i '229s/^/# /g' /opt/OpenFOAM/OpenFOAM-8/etc/bashrc
+
+%post
+    cd /
+    alias wmRefresh="echo blah"
+    . /opt/OpenFOAM/OpenFOAM-8/etc/bashrc FOAMY_HEX_MESH=yes
+    cd $WM_PROJECT_DIR
+    export QT_SELECT=qt5
+    ./Allwmake -j 6 2>&1 | tee log.make
+    ./Allwmake -j 6 2>&1 | tee log.make
+
+%post
+    cd /
+    echo ". /opt/OpenFOAM/OpenFOAM-8/etc/bashrc FOAMY_HEX_MESH=yes" >> $SINGULARITY_ENVIRONMENT
+
